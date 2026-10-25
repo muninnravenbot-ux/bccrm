@@ -1,5 +1,18 @@
 # BCCRM: business cards to a contact CRM
 
+<p align="center">
+  <img src="docs/img/stack.jpg" width="320" alt="A stack of 200+ business cards next to a small desk robot">
+  &nbsp;
+  <img src="docs/img/stack-and-app.jpg" width="320" alt="The same stack in front of a monitor showing BCCRM">
+</p>
+<p align="center"><em>200+ business cards from a year of conferences, digitized: every person searchable, every card one click from email or Telegram.</em></p>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/app-dark.png">
+  <img src="docs/img/app-light.png" alt="BCCRM: the people list, a contact with the card photo, one-click actions, status, notes and details (demo data)">
+</picture>
+<p align="center"><sub>The contact book, shown here with demo cards.</sub></p>
+
 Photograph your pile of business cards. BCCRM turns the photos into a searchable contact book with:
 
 - the card image beside each person;
