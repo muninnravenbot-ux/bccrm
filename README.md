@@ -1,9 +1,9 @@
 # BCCRM: business cards to a contact CRM
 
 <p align="center">
-  <img src="docs/img/stack.jpg" height="360" alt="A stack of 200+ business cards next to a small desk robot">
+  <img src="docs/img/card-stack.jpg" height="360" alt="A stack of 200+ business cards next to a small desk robot">
   &nbsp;
-  <img src="docs/img/stack-and-app.jpg" height="360" alt="The same stack in front of a monitor showing BCCRM">
+  <img src="docs/img/card-stack-and-app.jpg" height="360" alt="The same stack in front of a monitor showing BCCRM">
 </p>
 <p align="center"><em>200+ business cards from a year of conferences, digitized: every person searchable, every card one click from email or Telegram.</em></p>
 
