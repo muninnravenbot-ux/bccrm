@@ -110,14 +110,40 @@ class Handler(SimpleHTTPRequestHandler):
     def body(self):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
 
+    def thumb(self, name):
+        """Small JPEG for list rows, cached in thumbs/ and rebuilt when the crop changes (e.g. after it was turned upright)."""
+        src, dst = ROOT / "cards" / name, ROOT / "thumbs" / name
+        if not re.fullmatch(r"card_\d+\.jpg", name) or not src.exists():
+            return self.send_error(404)
+        if not dst.exists() or dst.stat().st_mtime < src.stat().st_mtime:
+            import cv2
+            img = cv2.imread(str(src))
+            s = 240 / max(img.shape[:2])
+            dst.parent.mkdir(exist_ok=True)
+            cv2.imwrite(str(dst), cv2.resize(img, None, fx=s, fy=s, interpolation=cv2.INTER_AREA) if s < 1 else img, [cv2.IMWRITE_JPEG_QUALITY, 82])
+        body = dst.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         self.path = self.path.split("?")[0].split("#")[0]
-        if self.path in ("/", "/index.html"):
-            self.path = "/crm.html"
         if self.path == "/api/data":
             return self.reply(data())
-        if ".." in self.path or not (self.path == "/crm.html" or self.path.startswith("/cards/")):
-            return self.send_error(404)  # serve the page and card images only, never cards.db or photos/
+        if self.path.startswith("/thumbs/"):
+            return self.thumb(self.path[len("/thumbs/"):])
+        if ".." in self.path:
+            return self.send_error(404)
+        built = (ROOT / "web/dist/index.html").exists()  # the OpenUI app (web/, `npm run build`); crm.html is the no-Node fallback
+        if self.path in ("/", "/index.html"):
+            self.path = "/web/dist/index.html" if built else "/crm.html"
+        elif built and self.path.startswith("/assets/"):
+            self.path = "/web/dist" + self.path
+        if not (self.path in ("/crm.html", "/web/dist/index.html") or self.path.startswith(("/cards/", "/web/dist/assets/"))):
+            return self.send_error(404)  # serve the app and card images only, never cards.db or photos/
         return super().do_GET()
 
     def do_POST(self):

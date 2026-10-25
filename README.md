@@ -47,6 +47,11 @@ never overwrites or deletes a card.
    dark mats. Overlapping detections are merged. Fragments, sheets, edge-cut cards and size outliers (a keyboard) are
    dropped. Each card is perspective-corrected to `cards/card_0001.jpg`, and every photo gets
    `debug/<photo>_debug.jpg` with numbered boxes, so you can spot misses.
+   **Turn upright.** Each crop is shown to the vision model as a 2×2 grid of its four rotations, and the model picks
+   the one where the name reads normally. It votes twice with the tiles in different orders, adding a third vote on a
+   tie, and the crop is rotated to match. Vertical cards stay vertical; sideways and upside-down cards are fixed.
+   Only the crop files change, and your photos in `photos/` are never touched. This runs before the card is read,
+   so the model also reads upright text.
 2. **QR.** `zxing-cpp` reads the QR codes, with OpenCV as the fallback. On real cards zxing decoded about twice as
    many: coloured codes and codes with a logo in the middle.
 3. **Extract.** A vision model reads each card to JSON:
@@ -79,6 +84,18 @@ Everything is stored in `cards.db` (SQLite): tables `cards`, `photos` and `compa
 `notes` tables, which `run.py` never touches.
 
 ## The contact book (`crm.py`)
+
+The interface is built with [OpenUI](https://www.openui.com)'s React component library (`@openuidev/react-ui`):
+chips, tabs, cards, buttons, inputs, its image gallery and photo viewer, and its light and dark themes. It lives in
+`web/`, and the built app in `web/dist/` is committed, so **running it needs only Python**. To change the
+interface:
+
+```
+cd web && npm install && npm run dev      # live reload against a running crm.py
+npm run build                             # writes web/dist, which crm.py serves
+```
+
+Without `web/dist`, `crm.py` falls back to `crm.html`, a dependency-free single page with the same features.
 
 - **One entry per person.** All photos of their card and its back sit in a photo strip.
 - **Search everything:** names, companies, emails, phones, Telegram handles and display names, QR links, tags,

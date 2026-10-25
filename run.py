@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Business-card pipeline: ./photos -> crop -> QR + GLM extract -> cards.db -> group by company -> web enrich -> ./export.
 Usage: python run.py"""
-import base64, csv, fcntl, html, json, os, re, sqlite3, sys, time, urllib.request
+import base64, csv, html, json, os, re, sqlite3, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -210,6 +210,67 @@ def crop_new_photos(db):
         for r in rows:
             print(f"    {r[0]} <- {photo.name}")
     return len(new), found
+
+
+# ---------- step 1b: turn crops upright ----------
+
+ROTATIONS = (0, 90, 180, 270)  # clockwise degrees
+CV_ROT = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+ORIENT_PROMPT = ("The same business card is shown 4 times, rotated differently, in tiles numbered 1-4. In which tile does the main "
+                 "text (the person's name) read normally, left-to-right and not upside down? If the card has no text, answer 0. "
+                 'Return ONLY JSON {"tile": n}')
+
+
+def ask_upright(img, order):
+    """One vote: a 2x2 grid of the rotations in `order`, the model names the upright tile. Returns degrees or None."""
+    tiles = []
+    for n, deg in enumerate(order, 1):
+        t = cv2.rotate(img, CV_ROT[deg]) if deg else img
+        s = 460 / max(t.shape[:2])
+        t = cv2.resize(t, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
+        c = np.full((520, 520, 3), 255, np.uint8)
+        y, x = 50 + (470 - t.shape[0]) // 2, (520 - t.shape[1]) // 2
+        c[y:y + t.shape[0], x:x + t.shape[1]] = t
+        cv2.putText(c, str(n), (12, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 220), 4)
+        tiles.append(c)
+    grid = np.vstack([np.hstack(tiles[:2]), np.hstack(tiles[2:])])
+    b64 = base64.b64encode(cv2.imencode(".jpg", grid, [cv2.IMWRITE_JPEG_QUALITY, 85])[1]).decode()
+    body = {"model": MODEL, "max_tokens": 50, "temperature": 0, **EXTRA, "response_format": {"type": "json_object"},
+            "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                                                      {"type": "text", "text": ORIENT_PROMPT}]}]}
+    req = urllib.request.Request(ZAI_URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + ZAI_KEY})
+    tile = int(json.loads(json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]).get("tile") or 0)
+    return order[tile - 1] if 1 <= tile <= 4 else None
+
+
+def upright(path):
+    """Rotate a crop in place so its text reads upright. Two votes with the tiles in different orders (a single vote
+    confused 90 and 270 on 1 of 15 real cards); a third breaks a tie. No clear answer -> left as it is."""
+    img = cv2.imread(str(path))
+    votes = [ask_upright(img, (0, 90, 180, 270)), ask_upright(img, (180, 270, 0, 90))]
+    if votes[0] != votes[1]:
+        votes.append(ask_upright(img, (270, 0, 90, 180)))
+    best = max(set(votes), key=votes.count)
+    deg = best if best is not None and votes.count(best) >= 2 else 0
+    if deg:
+        cv2.imwrite(str(path), cv2.rotate(img, CV_ROT[deg]), [cv2.IMWRITE_JPEG_QUALITY, 92])
+    return deg
+
+
+def orient_new(db):
+    todo = db.execute("SELECT id, image_path FROM cards WHERE oriented_at IS NULL").fetchall()
+    if not todo:
+        return
+    print(f"Turning {len(todo)} cards upright...")
+    with ThreadPoolExecutor(WORKERS) as pool:
+        futs = {pool.submit(upright, ROOT / p): cid for cid, p in todo}
+        for fut in as_completed(futs):
+            try:
+                deg = fut.result()
+                with db:  # recorded so a re-run never rotates the same crop twice
+                    db.execute("UPDATE cards SET rotation=?, oriented_at=datetime('now') WHERE id=?", (deg, futs[fut]))
+            except Exception as e:  # noqa: BLE001 - left as it is; retried next run
+                print(f"  ! orient #{futs[fut]}: {e}")
 
 
 # ---------- step 2: extract ----------
@@ -634,8 +695,13 @@ def main():
         d.mkdir(exist_ok=True)
     lock = open(ROOT / ".run.lock", "w")
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:  # BlockingIOError on Linux/macOS, PermissionError on Windows
         sys.exit("another run.py is already running; try again when it finishes")
     db = sqlite3.connect(DB)  # opens existing db, never recreates it
     cols = ", ".join(f"{f} {'REAL' if f == 'confidence' else 'INTEGER' if f == 'is_back_side' else 'TEXT'}" for f in FIELDS)
@@ -647,12 +713,13 @@ def main():
         CREATE TABLE IF NOT EXISTS companies (key TEXT PRIMARY KEY, name TEXT, website TEXT, about TEXT, what_they_do TEXT,
             industry TEXT, hq TEXT, socials TEXT, sources TEXT, enriched_at TEXT);""")
     have = {r[1] for r in db.execute("PRAGMA table_info(cards)")}
-    for col in ("link_info TEXT", "links_checked_at TEXT"):  # added after the first cards.db existed
+    for col in ("link_info TEXT", "links_checked_at TEXT", "rotation INTEGER", "oriented_at TEXT"):  # added after the first cards.db existed
         if col.split()[0] not in have:
             db.execute(f"ALTER TABLE cards ADD COLUMN {col}")
 
     print("Cropping new photos...")
     n_photos, n_cards = crop_new_photos(db)
+    orient_new(db)  # before extraction: the model reads upright text better too
     todo = db.execute("SELECT id, image_path, qr_text FROM cards WHERE raw_json IS NULL ORDER BY id").fetchall()
     print(f"Extracting {len(todo)} cards with {MODEL}...")
     failed, new_ids = 0, []
