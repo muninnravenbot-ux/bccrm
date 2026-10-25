@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Contacts CRM over cards.db: one entry per person, with status, star, tags, notes and inline edits.
 Usage: python crm.py  ->  http://localhost:8770"""
-import json, re, sqlite3, sys
+import json, os, re, sqlite3, sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import run  # coerce/save keep edited rows in the same shape the pipeline writes
 
 ROOT = Path(__file__).resolve().parent
-PORT = 8770
+PORT = int(os.environ.get("BC_PORT", 8770))
 EDITABLE = {"full_name", "job_title", "company", "emails", "phones", "telegram", "website", "linkedin", "address", "city", "country"}
 STATUSES = ["New", "To contact", "Contacted", "Replied", "Meeting", "Not a fit"]
 
