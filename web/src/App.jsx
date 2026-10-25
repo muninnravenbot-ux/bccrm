@@ -89,7 +89,7 @@ export default function App() {
       <div className={`shell${showDetail ? " show-detail" : ""}`}>
         <aside className="side">
           <div className="brand-row">
-            <div className="brand">BCCRM</div>
+            <div className="brand"><img src="/logo.png" alt="" width="28" height="28" />BCCRM</div>
             <IconButton variant="tertiary" size="small" icon={mode === "dark" ? <Sun size={16} /> : <Moon size={16} />}
               aria-label="Switch light or dark" onClick={() => setMode(m => (m === "dark" ? "light" : "dark"))} />
           </div>
@@ -126,6 +126,7 @@ export default function App() {
                 onClick={() => flash(`Exported ${exportCsv(list)} people`)}>Export this list (CSV)</Button>}
             </div>
           )}
+          <p className="made-by faint">Open source by <a href="https://crowork.ai" target="_blank" rel="noopener">Crowork.ai</a>. Want a tool like this built for your team? <a href="https://crowork.ai" target="_blank" rel="noopener">Talk to us</a>.</p>
         </aside>
 
         <main className="list">
@@ -339,6 +340,10 @@ function CompanyBody({ co, mates, goPerson }) {
         {Object.entries(co?.socials || {}).map(([k, u]) => (
           <Button key={k} variant="tertiary" size="small" onClick={() => window.open(u, "_blank", "noopener")}>{k[0].toUpperCase() + k.slice(1)}</Button>))}
       </div>
+      {co?.about && <p className="researched faint">
+        Researched on the web{co.researched && `, ${co.researched}`}{co.sources?.length > 0 && <>. Sources: {co.sources.slice(0, 4).map((u, i) => (
+          <React.Fragment key={u}>{i > 0 && ", "}<a href={u} target="_blank" rel="noopener">{shortUrl(u)}</a></React.Fragment>))}</>}
+      </p>}
       {mates.length > 0 && <>
         <h4>Also met here</h4>
         <Chips type="single" selected={[]} onToggle={id => goPerson(+id)}
@@ -358,7 +363,9 @@ function CompanyView({ k, data, goPerson, back }) {
       <div className="who"><h1>{co.name || k}</h1><div className="role">{[co.industry, co.hq].filter(Boolean).join(", ")}</div></div>
       <Card variant="card" width="full" className="block">
         <CompanyBody co={co} mates={[]} goPerson={goPerson} />
-        {!co.about && <p className="faint">No web profile for this company yet.</p>}
+        {!co.about && <p className="faint">{k.includes(".")
+          ? "Nothing found about this company on the web yet. python run.py retries companies it could not research."
+          : "Only a name on the card, no website, so it was not looked up on the web: a name alone matches too many companies."}</p>}
       </Card>
       <Card variant="sunk" width="full" className="block">
         <CardHeader title={`People (${people.length})`} />

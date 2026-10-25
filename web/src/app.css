@@ -11,7 +11,9 @@ a { color: var(--openui-text-neutral-link); }
 .shell { display: grid; grid-template-columns: 300px 380px 1fr; height: 100vh; background: var(--openui-background); }
 .side { padding: 20px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 .brand-row { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; }
-.brand { font: var(--openui-text-heading-md); letter-spacing: var(--openui-text-heading-md-letter-spacing); }
+.brand { font: var(--openui-text-heading-md); letter-spacing: var(--openui-text-heading-md-letter-spacing); display: flex; align-items: center; gap: 8px; }
+.made-by { margin: auto 4px 0; padding-top: 8px; font: var(--openui-text-body-sm); }
+.researched { margin: 4px 0 0; font: var(--openui-text-body-sm); overflow-wrap: anywhere; }
 .search { position: relative; }
 .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--openui-text-neutral-secondary); pointer-events: none; z-index: 1; }
 .search input { padding-left: 36px !important; width: 100%; }

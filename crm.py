@@ -9,6 +9,7 @@ import run  # coerce/save keep edited rows in the same shape the pipeline writes
 
 ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("BC_PORT", 8770))
+BRAND = ("/logo.png", "/favicon.png", "/apple-touch-icon.png")
 EDITABLE = {"full_name", "job_title", "company", "emails", "phones", "telegram", "website", "linkedin", "address", "city", "country"}
 STATUSES = ["New", "To contact", "Contacted", "Replied", "Meeting", "Not a fit"]
 
@@ -71,7 +72,8 @@ def data():
     companies = {}
     for r in db.execute("SELECT * FROM companies"):
         companies[r["key"]] = {"name": r["name"], "website": r["website"], "about": r["about"], "what": r["what_they_do"],
-                               "industry": r["industry"], "hq": r["hq"], "socials": json.loads(r["socials"] or "{}")}
+                               "industry": r["industry"], "hq": r["hq"], "socials": json.loads(r["socials"] or "{}"),
+                               "sources": json.loads(r["sources"] or "[]"), "researched": (r["enriched_at"] or "")[:10]}
     return {"people": people, "companies": companies, "statuses": STATUSES}
 
 
@@ -147,9 +149,11 @@ class Handler(SimpleHTTPRequestHandler):
         built = (ROOT / "web/dist/index.html").exists()  # the OpenUI app (web/, `npm run build`); crm.html is the no-Node fallback
         if self.path in ("/", "/index.html"):
             self.path = "/web/dist/index.html" if built else "/crm.html"
+        elif self.path in BRAND:
+            self.path = "/web/public" + self.path
         elif built and self.path.startswith("/assets/"):
             self.path = "/web/dist" + self.path
-        if not (self.path in ("/crm.html", "/web/dist/index.html") or self.path.startswith(("/cards/", "/web/dist/assets/"))):
+        if not (self.path in ("/crm.html", "/web/dist/index.html") or self.path.startswith(("/cards/", "/web/dist/assets/", "/web/public/"))):
             return self.send_error(404)  # serve the app and card images only, never cards.db or photos/
         return super().do_GET()
 
