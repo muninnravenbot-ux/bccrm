@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Button, Callout, Card, CardHeader, Chips, IconButton, ImageGallery, Input, Tabs, TabsList, TabsTrigger, Tag, TagBlock, TextArea, ThemeProvider,
+  Button, Callout, Card, CardHeader, Chips, IconButton, ImageGallery, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Tabs, TabsList, TabsTrigger, Tag, TagBlock, TextArea, ThemeProvider,
 } from "@openuidev/react-ui";
 import {
   Building2, Download, Globe, Linkedin, Mail, MessageCircle, Moon, Phone, QrCode, Search, Send, Star, Sun, Trash2, Users, X,
@@ -23,6 +24,7 @@ export default function App() {
   const [sel, setSel] = useState(null);
   const [toast, setToast] = useState(null);
   const [showDetail, setShowDetail] = useState(false);  // phones: list or person
+  const [showFilters, setShowFilters] = useState(false);  // phones: filters fold away so the list comes first
   const [, bump] = useState(0);
   const search = useRef(null);
 
@@ -102,8 +104,13 @@ export default function App() {
               <TabsTrigger value="companies" text="Companies" icon={<Building2 size={15} />} />
             </TabsList>
           </Tabs>
+          {data && (() => {
+            const active = [f.status, f.reach, f.tag, f.sector, f.starred].filter(Boolean).length;
+            return <Button className="filters-toggle" variant="secondary" size="small" aria-expanded={showFilters}
+              onClick={() => setShowFilters(s => !s)}>{showFilters ? "Hide filters" : active ? `Filters (${active} on)` : "Filters"}</Button>;
+          })()}
           {data && (
-            <div className="facets">
+            <div className={`facets${showFilters ? " open" : ""}`}>
               {view === "people" && <>
                 <section><h3>Status</h3>{chipsOf(data.statuses.map(s => [s, `${s} ${count(p => p.status === s)}`]), f.status, "status")}</section>
                 <section><h3>Reachable by</h3>{chipsOf([["telegram", `Telegram ${count(reach.telegram)}`], ["email", `Email ${count(reach.email)}`],
@@ -125,9 +132,16 @@ export default function App() {
           <div className="list-head">
             <span className="count">{view === "people" ? `${list?.length ?? 0} people` : `${companies?.length ?? 0} companies`}</span>
             {view === "people" && (
-              <select className="sort" value={sort} onChange={e => setSort(e.target.value)} aria-label="Sort">
-                <option value="company">By company</option><option value="name">By name</option><option value="recent">Recently updated</option>
-              </select>
+              <div className="sort">
+                <Select value={sort} onValueChange={setSort} size="sm">
+                  <SelectTrigger aria-label="Sort"><SelectValue /></SelectTrigger>
+                  <SelectContent position="popper">
+                    <SelectItem value="company">By company</SelectItem>
+                    <SelectItem value="name">By name</SelectItem>
+                    <SelectItem value="recent">Recently updated</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             )}
           </div>
           <div className="rows" role="listbox" aria-label="Results">
@@ -243,9 +257,12 @@ function PersonView({ p, data, save, flash, bump, goPerson, goCompany, back, all
         </div>
         <div className="who">
           <h1>{p.display}</h1>
-          <div className="role">{p.title}{p.title && p.coName ? " at " : ""}
-            {p.company_key && p.coName ? <a href={`#c${encodeURIComponent(p.company_key)}`} onClick={e => { e.preventDefault(); goCompany(p.company_key); }}>{p.coName}</a> : p.coName}
-          </div>
+          {(() => {  // "Title at Company", unless the title already names the company ("CEO & Founder at Yippie")
+            const named = p.title && p.coName && p.title.toLowerCase().includes(p.coName.toLowerCase());
+            const co = p.company_key && p.coName
+              ? <a href={`#c${encodeURIComponent(p.company_key)}`} onClick={e => { e.preventDefault(); goCompany(p.company_key); }}>{p.coName}</a> : p.coName;
+            return <div className="role">{named ? p.title : <>{p.title}{p.title && p.coName ? " at " : ""}{co}</>}</div>;
+          })()}
           <ReachButtons p={p} />
           <Chips type="single" selected={[p.status]} onToggle={s => s !== p.status && save(p, { status: s }, `Status set to ${s}`)}
             items={data.statuses.map(s => ({ value: s, label: s }))} />
@@ -255,10 +272,15 @@ function PersonView({ p, data, save, flash, bump, goPerson, goCompany, back, all
             {p.tags.length > 0 && <TagBlock>{p.tags.map(t => (
               <span key={t} className="tag-wrap"><Tag size="md" text={t} /><button className="untag" aria-label={`Remove tag ${t}`}
                 onClick={() => save(p, { tags: p.tags.filter(x => x !== t) }, "Tag removed")}><X size={12} /></button></span>))}</TagBlock>}
-            <Input size="small" className="tag-input" placeholder="Add tag" list="alltags" value={tagIn} aria-label="Add tag"
+            <Input size="small" className="tag-input" placeholder="Add a tag" value={tagIn} aria-label="Add a tag, then press Enter"
               onChange={e => setTagIn(e.target.value)} onKeyDown={e => e.key === "Enter" && addTag()} />
-            <datalist id="alltags">{allTags.map(t => <option key={t} value={t} />)}</datalist>
           </div>
+          {(() => {  // existing tags you can reuse with one click (instead of a native datalist popup)
+            const q = tagIn.trim().toLowerCase();
+            const sugg = allTags.filter(t => !p.tags.includes(t) && (!q || t.toLowerCase().includes(q))).slice(0, 6);
+            return sugg.length > 0 && <div className="tag-suggest"><span className="faint">Use:</span>{sugg.map(t => (
+              <button key={t} className="tag-pick" onClick={() => save(p, { tags: [...p.tags, t].sort() }, `Tagged ${t}`)}><Tag size="sm" text={t} /></button>))}</div>;
+          })()}
         </div>
       </div>
 

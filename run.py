@@ -186,6 +186,9 @@ def crop_new_photos(db):
         if img is None:
             print(f"  ! cannot read {photo.name}, skipped")
             continue
+        if max(img.shape[:2]) < 2400:  # chat apps shrink photos to ~1280-2000 px; on real cards that meant misread digits and emails
+            print(f"  ! {photo.name} is only {img.shape[1]}x{img.shape[0]}: expect misreads. Use the phone's original file "
+                  f"(or send it as a file, not a photo).")
         quads, dark_bg = find_cards(img)
         if not quads:  # a card held in the hand, or a close-up: read the whole photo as one card rather than lose it
             h, w = img.shape[:2]
@@ -239,7 +242,11 @@ def ask_upright(img, order):
             "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
                                                       {"type": "text", "text": ORIENT_PROMPT}]}]}
     req = urllib.request.Request(ZAI_URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + ZAI_KEY})
-    tile = int(json.loads(json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]).get("tile") or 0)
+    content = json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]
+    try:
+        tile = int(json.loads(content).get("tile") or 0)
+    except (ValueError, TypeError, AttributeError):  # empty or non-JSON reply: cards with no text (logo/QR backs) get this
+        return None
     return order[tile - 1] if 1 <= tile <= 4 else None
 
 
@@ -257,6 +264,18 @@ def upright(path):
     return deg
 
 
+def refused(e):
+    """The provider's content filter rejected the image (Z.AI code 1301: gambling/adult cards trip it). Retrying never helps."""
+    if isinstance(e, urllib.error.HTTPError) and e.code == 400:
+        try:
+            body = e.read().decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            body = ""
+        e.refusal = "1301" in body or "contentFilter" in body or "sensitive" in body
+        return e.refusal
+    return getattr(e, "refusal", False)
+
+
 def orient_new(db):
     todo = db.execute("SELECT id, image_path FROM cards WHERE oriented_at IS NULL").fetchall()
     if not todo:
@@ -269,8 +288,13 @@ def orient_new(db):
                 deg = fut.result()
                 with db:  # recorded so a re-run never rotates the same crop twice
                     db.execute("UPDATE cards SET rotation=?, oriented_at=datetime('now') WHERE id=?", (deg, futs[fut]))
-            except Exception as e:  # noqa: BLE001 - left as it is; retried next run
-                print(f"  ! orient #{futs[fut]}: {e}")
+            except Exception as e:  # noqa: BLE001 - left as it is; retried next run unless the provider refused it
+                if refused(e):
+                    with db:
+                        db.execute("UPDATE cards SET rotation=0, oriented_at=datetime('now') WHERE id=?", (futs[fut],))
+                    print(f"  ! orient #{futs[fut]}: the model provider refused this image (content filter); left as photographed")
+                else:
+                    print(f"  ! orient #{futs[fut]}: {e}")
 
 
 # ---------- step 2: extract ----------
@@ -293,7 +317,12 @@ def extract(path, qr_text):
             return coerce(json.loads(res["choices"][0]["message"]["content"]))
         except Exception as e:  # noqa: BLE001 - any failure is retried, then left for the next run
             err = e
+            if refused(e):
+                break  # the content filter will refuse it every time
             time.sleep(5 * 2 ** attempt)
+    if refused(err):  # keep the card, ask a human: an empty row flagged for review instead of retrying forever
+        return coerce({"other_text": "The model provider refused to read this card (content filter). Fill it in from the photo.",
+                       "confidence": 0, "uncertain_fields": ["all fields (provider refused the image)"]})
     raise RuntimeError(f"{path}: {err}")
 
 
@@ -398,7 +427,32 @@ def flag_duplicates(db):
     with db:
         db.executemany("UPDATE cards SET duplicate_of=? WHERE id=?", [(v, k) for k, v in dup.items()])
         db.execute("UPDATE cards SET needs_review=0 WHERE duplicate_of IS NOT NULL")  # review the original, not every copy
+    flag_disagreements(db)
     return sum(v is not None for v in dup.values())
+
+
+def flag_disagreements(db):
+    """Two photos of the same card that read different emails or phones: one of them is a misread (seen on real cards:
+    a dropped digit, a letter off in a domain). Flag the original for review, unless a person already verified it."""
+    digits = lambda ps: {re.sub(r"\D", "", p)[-9:] for p in json.loads(ps or "[]") if len(re.sub(r"\D", "", p)) >= 7}
+    emails = lambda es: {e.strip().lower() for e in json.loads(es or "[]") if "@" in e}
+    rows = {r[0]: r for r in db.execute("SELECT id, duplicate_of, emails, phones, confidence, is_back_side, raw_json FROM cards WHERE raw_json IS NOT NULL")}
+    flagged = {}
+    for cid, orig, em, ph, _, back, _ in rows.values():
+        o = rows.get(orig)
+        if not o or back or o[5] or o[4] == 1.0:  # no original, a card back, or the original was verified by hand
+            continue
+        for name, a, b in (("emails", emails(em), emails(o[2])), ("phones", digits(ph), digits(o[3]))):
+            if a and b and a != b:
+                flagged.setdefault(orig, set()).add(name)
+    with db:
+        for oid, fields in flagged.items():
+            d = json.loads(rows[oid][6])
+            d["uncertain_fields"] = sorted(set(d.get("uncertain_fields") or []) | {f + " (photos disagree)" for f in fields})
+            db.execute("UPDATE cards SET needs_review=1, uncertain_fields=?, raw_json=? WHERE id=?",
+                       (json.dumps(d["uncertain_fields"], ensure_ascii=False), json.dumps(d, ensure_ascii=False), oid))
+    if flagged:
+        print(f"  {len(flagged)} cards flagged: their photos disagree on an email or phone")
 
 
 # ---------- step 3b: follow links (Telegram handles, QR pages) ----------

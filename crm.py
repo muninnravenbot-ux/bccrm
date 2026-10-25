@@ -29,7 +29,9 @@ def data():
     photos, qrs = {}, {}
     for c in cards:  # every copy and back of a card hangs off its original, and so do their QR codes
         root = c["duplicate_of"] or c["id"]
-        photos.setdefault(root, []).append(c["image_path"])
+        f = ROOT / c["image_path"]
+        # version stamp: a crop rewritten on disk (turned upright) gets a new URL, so no browser shows a stale copy
+        photos.setdefault(root, []).append(f"{c['image_path']}?v={int(f.stat().st_mtime) if f.exists() else 0}")
         for part in (c["qr_text"] or "").split("\n---\n"):
             if part.strip() and part.strip() not in qrs.setdefault(root, []):
                 qrs[root].append(part.strip())
@@ -98,6 +100,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+    def end_headers(self):
+        if self.path.startswith(("/cards/", "/web/dist/index.html", "/crm.html")):
+            self.send_header("Cache-Control", "no-cache")  # always revalidate: crops get rotated, the app gets rebuilt
+        super().end_headers()
 
     def reply(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode()

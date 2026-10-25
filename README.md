@@ -157,6 +157,33 @@ checked against its image by hand afterwards.
 - **Model limits.** `glm-5.3-flash` garbles right-to-left scripts (Hebrew); use a stronger vision model if you have
   many such cards. Glare on metal cards hides text.
 
+## Failures it handles for you
+
+Every item below happened on a real stack of ~500 cards and is now handled in the code:
+
+| What went wrong | What BCCRM does |
+|---|---|
+| Chat apps compress photos, so digits and emails get misread | warns per photo when it's under 2400 px; tells you to use the original file |
+| Dark cards on a dark mat, light cards on the same mat | several detection passes, including "mat flood", merged |
+| Cards cut off by the photo edge become half-card rows | edge-cut boxes are dropped when the photo has other cards |
+| A keyboard or legs detected as cards | boxes far bigger than the photo's typical card are dropped |
+| A card held in the hand, no mat | no card found means the whole photo is read as one card |
+| Cards sideways or upside down | turned upright before reading; two votes plus a tie-break |
+| Browser keeps showing the old, unrotated image | image URLs carry a version stamp, so a changed crop is a new URL |
+| Coloured QR codes, or a logo in the middle, unreadable | `zxing-cpp` reads them (about twice as many as OpenCV) |
+| QR-only cards with no printed contact data | the QR's vCard and links fill the fields; QR pages are opened and read |
+| Skype IDs filed as Telegram or left in notes | Skype is dropped in the prompt and again in code |
+| Telegram handles that may not exist | checked on `t.me`; a hidden preview is "unconfirmed", not "wrong" |
+| Two photos of the same card read differently | the card is flagged for review ("photos disagree") |
+| Same person on cards with only a Telegram handle or a name and title | those count as duplicate keys too |
+| Logo-only backs | linked to the front with the same company |
+| Name-only company searched on the web ("MLB" → baseball) | only companies with a domain are looked up |
+| Link-in-bio hosts (linktr.ee, mssg.me) mistaken for the company | never used as a company key |
+| Model provider refuses a card (content filter) | the card is kept and flagged for a person, never retried forever |
+| Cards with no text (logo or QR backs) stall orientation | an empty answer is "no vote"; the card is left as photographed |
+| Dark mode: native menus white on white, dim grey text | themed controls everywhere; text meets WCAG contrast (4.5:1) in both themes |
+| Two runs at once, e.g. two chat messages | a lock serialises them (Linux, macOS, Windows) |
+
 ## Feeding it from a chat bot
 
 `run.py` reads whatever is in `photos/`, and it's safe to run concurrently (a lock serialises runs). A Telegram or
