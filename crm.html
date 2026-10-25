@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BCCRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #EDF0F3; --panel: #FFFFFF; --ink: #18202B; --muted: #5B6676; --faint: #8A94A3; --line: #D8DEE5;
+  --accent: #0E7C86; --accent-ink: #FFFFFF; --accent-soft: #DCEFF0; --hover: #F3F6F8; --sel: #E4F1F2;
+  --s-new: #8A94A3; --s-tocontact: #B7791F; --s-contacted: #2F6FDB; --s-replied: #0E7C86; --s-meeting: #2E8B57; --s-notafit: #A65151;
+  --star: #D69E2E; --radius-s: 6px; --radius-m: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #12171D; --panel: #1A2129; --ink: #E7ECF1; --muted: #A3AEBB; --faint: #7A8594; --line: #2C3540;
+    --accent: #3BB3BC; --accent-ink: #0D1316; --accent-soft: #1E3A3D; --hover: #212A33; --sel: #1F3438; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { font: 14px/1.45 "Onest", system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--ink); background: var(--bg);
+  font-feature-settings: "tnum" 1; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.app { display: grid; grid-template-columns: 236px 380px 1fr; height: 100vh; }
+/* sidebar */
+.side { padding: 18px 14px; overflow-y: auto; border-right: 1px solid var(--line); }
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.01em; margin: 2px 6px 14px; }
+.search { width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel); }
+.search::placeholder { color: var(--faint); }
+.views { display: flex; gap: 4px; margin: 12px 0 18px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 3px; }
+.views button { flex: 1; border: 0; background: none; padding: 6px 0; border-radius: 7px; cursor: pointer; color: var(--muted); font-weight: 500; }
+.views button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.group { margin-bottom: 18px; }
+.group h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 6px 6px; }
+.facet { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; text-align: left; padding: 5px 6px;
+  border-radius: var(--radius-s); cursor: pointer; color: var(--ink); }
+.facet:hover { background: var(--hover); }
+.facet[aria-pressed="true"] { background: var(--sel); font-weight: 600; }
+.facet .n { margin-left: auto; color: var(--faint); font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.side .export { width: 100%; margin-top: 4px; }
+
+/* list */
+.list { display: flex; flex-direction: column; border-right: 1px solid var(--line); background: var(--panel); min-height: 0; }
+.list-head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
+.list-head .count { font-weight: 600; }
+.list-head select { margin-left: auto; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius-s); padding: 4px 6px; color: var(--muted); }
+.rows { overflow-y: auto; flex: 1; }
+.row { display: grid; grid-template-columns: 76px 1fr auto; gap: 12px; align-items: center; padding: 10px 16px; cursor: pointer;
+  border-bottom: 1px solid var(--line); }
+.row:hover { background: var(--hover); }
+.row[aria-selected="true"] { background: var(--sel); box-shadow: inset 3px 0 0 var(--accent); }
+.thumb { width: 76px; height: 46px; object-fit: cover; border-radius: 4px; background: var(--line); display: block; }
+.row .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .sub { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.row .star { color: var(--star); font-size: 13px; }
+.row .meta { flex-direction: row; align-items: center; }
+.qr-mark { color: var(--faint); display: inline-flex; }
+.qr-mark svg { width: 14px; height: 14px; }
+.empty { padding: 40px 24px; color: var(--muted); text-align: center; }
+
+/* detail */
+.detail { overflow-y: auto; min-height: 0; }
+.detail-inner { max-width: 860px; padding: 26px 32px 60px; }
+.btn.back, .btn.filters-toggle { display: none; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+.card-photo { width: 100%; border-radius: var(--radius-m); background: var(--panel); border: 1px solid var(--line); display: block;
+  max-height: 340px; object-fit: contain; cursor: zoom-in; }
+.strip { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.strip img { width: 64px; height: 40px; object-fit: cover; border-radius: 4px; cursor: pointer; border: 2px solid transparent; opacity: .75; }
+.strip img[aria-current="true"] { border-color: var(--accent); opacity: 1; }
+.who h1 { font-size: 28px; line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 6px; }
+.who .role { color: var(--muted); font-size: 15px; margin-bottom: 14px; }
+.who .role a { font-weight: 500; }
+.reach { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--panel); border-radius: var(--radius-s);
+  padding: 6px 11px; cursor: pointer; color: var(--ink); font-weight: 500; text-decoration: none; }
+.btn:hover { background: var(--hover); text-decoration: none; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.ghost { border-color: transparent; background: none; color: var(--muted); }
+.btn svg { width: 15px; height: 15px; }
+.statuses { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+.statuses button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 11px; cursor: pointer; font-size: 13px; }
+.statuses button[aria-pressed="true"] { color: #fff; border-color: transparent; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tag { background: var(--accent-soft); color: var(--ink); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; display: inline-flex; align-items: center; gap: 2px; }
+.tag button { border: 0; background: none; cursor: pointer; color: var(--muted); padding: 0 5px; }
+.tag-input { border: 1px dashed var(--line); background: none; border-radius: 999px; padding: 3px 10px; width: 130px; font-size: 13px; }
+
+section.block { margin-top: 30px; }
+section.block h2 { font-size: 15px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+section.block h2 .btn { margin-left: auto; font-size: 13px; padding: 3px 9px; }
+dl.fields { display: grid; grid-template-columns: 130px 1fr; gap: 7px 16px; margin: 0; }
+dl.fields dt { color: var(--muted); }
+dl.fields dd { margin: 0; overflow-wrap: anywhere; }
+dl.fields input { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--panel); }
+.verified { color: var(--muted); font-size: 12.5px; }
+.note-form textarea { width: 100%; min-height: 64px; padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--panel); resize: vertical; }
+.note-form .btn { margin-top: 6px; }
+.note { padding: 10px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
+.note .when { color: var(--faint); font-size: 12px; display: flex; justify-content: space-between; }
+.note .when button { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 12px; }
+.company-box { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-m); padding: 16px 18px; }
+.company-box p { margin: 0 0 8px; max-width: 70ch; }
+.company-box .facts { color: var(--muted); font-size: 13px; }
+.mates { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.mate { border: 1px solid var(--line); border-radius: var(--radius-s); padding: 5px 10px; background: var(--panel); cursor: pointer; font-size: 13px; }
+.mate:hover { background: var(--hover); }
+.backs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.backs img { width: 140px; height: 84px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); cursor: zoom-in; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px;
+  border-radius: var(--radius-m); font-weight: 500; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+.zoom { position: fixed; inset: 0; background: rgba(10, 14, 20, .82); display: none; align-items: center; justify-content: center; z-index: 10; cursor: zoom-out; }
+.zoom.show { display: flex; }
+.zoom img { max-width: 94vw; max-height: 92vh; border-radius: 8px; }
+.placeholder { color: var(--muted); padding: 80px 32px; }
+.placeholder h2 { color: var(--ink); font-size: 20px; margin: 0 0 6px; }
+kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font: 12px "Onest", sans-serif; background: var(--panel); }
+
+@media (max-width: 1100px) { .app { grid-template-columns: 200px 330px 1fr; } .hero { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+  .side { border-right: 0; border-bottom: 1px solid var(--line); }
+  .list .rows { max-height: none; }
+  .detail { display: none; }
+  body.show-detail .side, body.show-detail .list { display: none; }
+  body.show-detail .detail { display: block; }
+  .btn.back { display: inline-flex; margin-bottom: 14px; }
+  .btn.filters-toggle { display: inline-flex; width: 100%; justify-content: center; margin-bottom: 8px; }
+  #facets, .side .export { display: none; }
+  body.filters-open #facets, body.filters-open .side .export { display: block; }
+  .detail-inner { padding: 16px; }
+  dl.fields { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">BCCRM</div>
+    <input class="search" id="q" type="search" placeholder="Search names, companies, notes" aria-label="Search" autocomplete="off">
+    <div class="views" role="group" aria-label="View">
+      <button id="v-people" aria-pressed="true">People</button>
+      <button id="v-companies" aria-pressed="false">Companies</button>
+    </div>
+    <button class="btn filters-toggle" id="filters-toggle" aria-expanded="false" aria-controls="facets">Filters</button>
+    <div id="facets"></div>
+    <button class="btn export" id="export">Export this list (CSV)</button>
+  </aside>
+  <main class="list">
+    <div class="list-head">
+      <span class="count" id="count"></span>
+      <select id="sort" aria-label="Sort">
+        <option value="company">By company</option>
+        <option value="name">By name</option>
+        <option value="recent">Recently updated</option>
+      </select>
+    </div>
+    <div class="rows" id="rows" role="listbox" aria-label="Results"></div>
+  </main>
+  <section class="detail" id="detail" aria-live="polite"></section>
+</div>
+<div class="zoom" id="zoom"><img alt=""></div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const STATUS_VAR = {"New": "--s-new", "To contact": "--s-tocontact", "Contacted": "--s-contacted", "Replied": "--s-replied", "Meeting": "--s-meeting", "Not a fit": "--s-notafit"};
+const color = s => `var(${STATUS_VAR[s] || "--s-new"})`;
+const ICON = {
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  tg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.3 2.9 11.5c-1.3.5-1.2 1.3-.2 1.6l4.8 1.5 1.8 5.6c.2.7.5.8 1 .8.5 0 .7-.2 1-.5l2.3-2.2 4.8 3.5c.9.5 1.5.2 1.7-.8l3.1-14.7c.3-1.3-.5-1.9-1.7-1.5Zm-4 3.6-7.6 6.9-.3 3.2-1.4-4.4 9.3-5.7Z"/></svg>',
+  phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21l1.7-5A8.5 8.5 0 1 1 8 19.4L3 21Z"/></svg>',
+  in: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.98 3.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5ZM3 9h4v12H3zM9 9h3.8v1.7h.1c.5-1 1.8-2 3.8-2 4 0 4.8 2.6 4.8 6V21h-4v-5.6c0-1.3 0-3-1.9-3s-2.1 1.4-2.1 2.9V21H9z"/></svg>',
+  web: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  qr: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"/></svg>',
+};
+const S = {people: [], companies: {}, statuses: [], view: "people", q: "", sort: "company", status: null, tag: null, industry: null,
+  starred: false, has: null, sel: null, editing: false, photo: 0};
+
+// The web lookup writes free-text industries; fold them into a few sectors you can actually filter by.
+const SECTORS = [["Trading & brokers", /forex|\bfx\b|broker|trading|prop firm|cfd/i], ["Fintech & payments", /payment|fintech|bank|crypto|wallet|exchange|psp|card/i],
+  ["iGaming", /gambl|casino|betting|igaming|sportsbook|slot|lotto/i], ["Affiliate & lead gen", /affiliate|cpa|lead gen|lead generation|performance/i],
+  ["Ads & media", /advert|ad network|adtech|programmatic|media|marketing|traffic|seo|agency/i]];
+function sector(industry, about) {
+  const ind = industry || "";
+  for (const [name, re] of SECTORS) if (re.test(ind)) return name;
+  for (const [name, re] of SECTORS) if (re.test(about || "")) return name;
+  return industry || about ? "Other" : "";
+}
+
+async function load() {
+  const d = await (await fetch("/api/data")).json();
+  S.people = d.people; S.companies = d.companies; S.statuses = d.statuses;
+  for (const p of S.people) {
+    const co = S.companies[p.company_key] || {};
+    p.coName = co.name || p.company || "";
+    p.industry = sector(co.industry, co.about);
+    p.display = p.name || (p.company ? p.company : p.emails[0] || p.telegram[0] || "Unnamed card");
+    p.bare = !p.name && !p.emails.length && !p.phones.length && !p.telegram.length;  // logo backs etc.
+    p.updated = p.notes[0]?.at || "";
+  }
+  const h = location.hash.match(/^#(p|c)(.+)$/);
+  if (h) { S.view = h[1] === "p" ? "people" : "companies"; S.sel = h[1] === "p" ? +h[2] : decodeURIComponent(h[2]); document.body.classList.add("show-detail"); }
+  render();
+}
+
+function hay(p) {
+  return [p.display, p.title, p.coName, p.company, ...p.emails, ...p.phones, ...p.telegram, p.website, p.city, p.country, p.other,
+    p.industry, ...p.tags, ...p.notes.map(n => n.text), ...Object.values(p.tg).map(t => t.name),
+    ...p.qr.map(q => q.url || q.final || q.text)].join(" ").toLowerCase();
+}
+
+function filtered() {
+  const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  return S.people.filter(p => !p.bare
+    && (!S.status || p.status === S.status) && (!S.tag || p.tags.includes(S.tag)) && (!S.industry || p.industry === S.industry)
+    && (!S.starred || p.starred)
+    && (!S.has || (S.has === "telegram" ? p.telegram.length : S.has === "email" ? p.emails.length : S.has === "phone" ? p.phones.length
+      : S.has === "qr" ? p.qr.length : p.review))
+    && words.every(w => hay(p).includes(w)));
+}
+
+function sorted(list) {
+  const by = {company: (a, b) => (!a.coName - !b.coName) || a.coName.localeCompare(b.coName) || a.display.localeCompare(b.display),
+    name: (a, b) => a.display.localeCompare(b.display), recent: (a, b) => (b.updated || "").localeCompare(a.updated || "") || b.id - a.id};
+  return [...list].sort(by[S.sort]);
+}
+
+function companiesList() {
+  const words = S.q.toLowerCase().split(/\s+/).filter(Boolean);
+  const map = {};
+  for (const p of S.people) if (p.company_key) (map[p.company_key] ||= []).push(p);
+  return Object.entries(map).map(([key, ps]) => ({key, ps, co: S.companies[key] || {name: ps[0].company || key}}))
+    .filter(c => (!S.industry || c.ps[0].industry === S.industry)
+      && words.every(w => [c.co.name, c.co.about, c.co.industry, c.co.hq, key, ...c.ps.map(hay)].join(" ").toLowerCase().includes(w)))
+    .sort((a, b) => (a.co.name || "").localeCompare(b.co.name || ""));
+}
+
+function facet(label, n, pressed, attrs, dot) {
+  return `<button class="facet" aria-pressed="${pressed}" ${attrs}>${dot ? `<span class="dot" style="background:${dot}"></span>` : ""}${esc(label)}<span class="n">${n}</span></button>`;
+}
+
+function renderFacets() {
+  const ppl = S.people.filter(p => !p.bare);
+  const cnt = f => ppl.filter(f).length;
+  let h = "";
+  if (S.view === "people") {
+    h += `<div class="group">${facet("Everyone", ppl.length, !S.status && !S.starred && !S.has, 'data-reset=1')}
+      ${facet("Starred", cnt(p => p.starred), S.starred, 'data-starred=1', "var(--star)")}</div>`;
+    h += `<div class="group"><h3>Status</h3>${S.statuses.map(s => facet(s, cnt(p => p.status === s), S.status === s, `data-status="${esc(s)}"`, color(s))).join("")}</div>`;
+    const tags = {};
+    ppl.forEach(p => p.tags.forEach(t => tags[t] = (tags[t] || 0) + 1));
+    if (Object.keys(tags).length) h += `<div class="group"><h3>Tags</h3>${Object.entries(tags).sort().map(([t, n]) => facet(t, n, S.tag === t, `data-tag="${esc(t)}"`)).join("")}</div>`;
+    h += `<div class="group"><h3>Reachable by</h3>${[["telegram", "Telegram"], ["email", "Email"], ["phone", "Phone"]].map(([k, l]) =>
+      facet(l, cnt(p => p[k === "telegram" ? "telegram" : k === "email" ? "emails" : "phones"].length), S.has === k, `data-has="${k}"`)).join("")}
+      ${facet("QR code", cnt(p => p.qr.length), S.has === "qr", 'data-has="qr"')}
+      ${cnt(p => p.review) ? facet("Needs a check", cnt(p => p.review), S.has === "review", 'data-has="review"') : ""}</div>`;
+  }
+  const inds = {};
+  ppl.forEach(p => { if (p.industry) inds[p.industry] = (inds[p.industry] || 0) + 1; });
+  const order = [...SECTORS.map(s => s[0]), "Other"];
+  h += `<div class="group"><h3>Sector</h3>${order.filter(i => inds[i]).map(i => facet(i, inds[i], S.industry === i, `data-industry="${esc(i)}"`)).join("")}</div>`;
+  $("#facets").innerHTML = h;
+}
+
+function renderList() {
+  const rows = $("#rows");
+  if (S.view === "people") {
+    const list = sorted(filtered());
+    $("#count").textContent = `${list.length} ${list.length === 1 ? "person" : "people"}`;
+    rows.innerHTML = list.length ? list.map(p => `<div class="row" role="option" data-id="${p.id}" aria-selected="${S.sel === p.id}" tabindex="-1">
+        <img class="thumb" loading="lazy" src="/${esc(p.photos[0])}" alt="">
+        <div style="min-width:0"><div class="name">${esc(p.display)}</div><div class="sub">${esc([p.title, p.coName].filter(Boolean).join(", "))}</div></div>
+        <div class="meta">${p.starred ? '<span class="star" aria-label="Starred">★</span>' : ""}${p.qr.length ? `<span class="qr-mark" title="Has a QR code">${ICON.qr}</span>` : ""}<span class="dot" title="${esc(p.status)}" style="background:${color(p.status)}"></span></div>
+      </div>`).join("") : `<div class="empty">Nobody matches. Clear the search or pick another filter.</div>`;
+  } else {
+    const list = companiesList();
+    $("#count").textContent = `${list.length} ${list.length === 1 ? "company" : "companies"}`;
+    rows.innerHTML = list.map(c => `<div class="row" role="option" data-co="${esc(c.key)}" aria-selected="${S.sel === c.key}" tabindex="-1">
+        <img class="thumb" loading="lazy" src="/${esc(c.ps[0].photos[0])}" alt="">
+        <div style="min-width:0"><div class="name">${esc(c.co.name || c.key)}</div><div class="sub">${esc(c.co.industry || c.key)}</div></div>
+        <div class="meta"><span class="n" style="color:var(--faint);font-size:12px">${c.ps.filter(p => !p.bare).length || ""}</span></div>
+      </div>`).join("");
+  }
+}
+
+const shortUrl = u => u.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "");
+
+function qrRow(p) {
+  if (!p.qr.length) return "";
+  return `<dt>QR code</dt><dd>${p.qr.map(q => q.kind === "link"
+      ? `<a href="${esc(q.url)}" target="_blank" rel="noopener">${esc(q.url)}</a>${q.final ? `<br><span class="verified">opens ${esc(shortUrl(q.final))}</span>` : ""}`
+      : q.kind === "vcard" ? `Contact card (vCard): ${esc((q.text.match(/^FN[^:]*:(.*)$/m) || [, "contact"])[1])}`
+      : esc(q.text)).join("<br>")}</dd>`;
+}
+
+function reachButtons(p) {
+  const b = [];
+  p.emails.forEach(e => b.push(`<a class="btn primary" href="mailto:${esc(e)}">${ICON.mail}${esc(e)}</a>`));
+  p.telegram.forEach(t => { const tg = p.tg[t];
+    b.push(`<a class="btn" href="https://t.me/${esc(t.replace(/^@/, ""))}" target="_blank" rel="noopener" title="${tg ? esc(`Telegram ${tg.kind}: ${tg.name}`) : "Not confirmed on t.me"}">${ICON.tg}${esc(t)}</a>`); });
+  p.phones.forEach(ph => { b.push(`<a class="btn" href="tel:${esc(ph)}">${ICON.phone}${esc(ph)}</a>`);
+    if (ph.startsWith("+")) b.push(`<a class="btn ghost" href="https://wa.me/${esc(ph.replace(/\D/g, ""))}" target="_blank" rel="noopener" title="WhatsApp">${ICON.wa}</a>`); });
+  const tgHandles = p.telegram.map(t => t.replace(/^@/, "").toLowerCase());
+  const dupOfButton = u => { const m = u.match(/t\.me\/([\w_]+)/i);
+    return (m && tgHandles.includes(m[1].toLowerCase())) || (p.linkedin && shortUrl(u) === shortUrl(p.linkedin)); };
+  p.qr.forEach(q => {
+    if (q.kind === "link" && !dupOfButton(q.url)) b.push(`<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener" title="QR code on the card${q.final ? `, opens ${esc(q.final)}` : ""}">${ICON.qr}${esc(shortUrl(q.url))}</a>`);
+    if (q.kind === "vcard") b.push(`<a class="btn" href="data:text/vcard;charset=utf-8,${encodeURIComponent(q.text)}" download="${esc((p.name || "contact").replace(/[^\w\- ]+/g, ""))}.vcf" title="QR code on the card holds a contact card">${ICON.qr}Save contact (.vcf)</a>`);
+  });
+  if (p.linkedin) b.push(`<a class="btn" href="${esc(/^https?:/.test(p.linkedin) ? p.linkedin : "https://" + p.linkedin)}" target="_blank" rel="noopener">${ICON.in}LinkedIn</a>`);
+  (p.website || "").split(/[\s,;|]+/).filter(w => w.includes(".")).forEach(w => b.push(
+    `<a class="btn" href="${esc(/^https?:/.test(w) ? w : "https://" + w)}" target="_blank" rel="noopener">${ICON.web}${esc(shortUrl(w))}</a>`));
+  return b.join("");
+}
+
+function companyBlock(key, exceptId) {
+  const co = S.companies[key];
+  const mates = S.people.filter(q => q.company_key === key && q.id !== exceptId && !q.bare);
+  const backs = S.people.filter(q => q.company_key === key && q.bare);
+  if (!co && !mates.length) return "";
+  const socials = co ? Object.entries(co.socials || {}).map(([k, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(k[0].toUpperCase() + k.slice(1))}</a>`).join(", ") : "";
+  return `<section class="block"><h2>${esc(co?.name || key)}</h2><div class="company-box">
+    ${co?.about ? `<p>${esc(co.about)}</p>` : ""}${co?.what && co.what !== co.about ? `<p>${esc(co.what)}</p>` : ""}
+    <div class="facts">${esc([co?.industry, co?.hq].filter(Boolean).join(". "))}${socials ? `<br>${socials}` : ""}${co?.website ? `<br><a href="https://${esc(co.website)}" target="_blank" rel="noopener">${esc(co.website)}</a>` : ""}</div>
+    ${mates.length ? `<div class="facts" style="margin-top:12px">Also met here</div><div class="mates">${mates.map(m => `<button class="mate" data-goto="${m.id}">${esc(m.display)}${m.title ? `, ${esc(m.title)}` : ""}</button>`).join("")}</div>` : ""}
+    ${backs.length ? `<div class="backs">${backs.flatMap(q => q.photos).map(src => `<img src="/${esc(src)}" alt="Card back" data-zoom="/${esc(src)}">`).join("")}</div>` : ""}
+  </div></section>`;
+}
+
+function renderPerson(p) {
+  const photo = p.photos[Math.min(S.photo, p.photos.length - 1)];
+  const F = [["full_name", "Name", p.name], ["job_title", "Title", p.title], ["company", "Company", p.company], ["emails", "Email", p.emails.join(", ")],
+    ["phones", "Phone", p.phones.join(", ")], ["telegram", "Telegram", p.telegram.join(", ")], ["website", "Website", p.website],
+    ["linkedin", "LinkedIn", p.linkedin], ["address", "Address", p.address], ["city", "City", p.city], ["country", "Country", p.country]];
+  const tgNotes = Object.entries(p.tg).map(([h, t]) => `${h} is a Telegram ${t.kind} named “${t.name}”`).join(". ");
+  return `<div class="detail-inner">
+    <button class="btn back" data-back=1>Back to list</button>
+    <div class="hero">
+      <div><img class="card-photo" src="/${esc(photo)}" alt="Business card of ${esc(p.display)}" data-zoom="/${esc(photo)}">
+        ${p.photos.length > 1 ? `<div class="strip">${p.photos.map((src, i) => `<img src="/${esc(src)}" alt="Photo ${i + 1}" data-photo="${i}" aria-current="${src === photo}">`).join("")}</div>` : ""}</div>
+      <div class="who">
+        <h1>${esc(p.display)}</h1>
+        <div class="role">${esc(p.title || "")}${p.title && p.coName ? " at " : ""}${p.company_key && p.coName ? `<a href="#c${encodeURIComponent(p.company_key)}" data-co-link="${esc(p.company_key)}">${esc(p.coName)}</a>` : esc(p.coName)}</div>
+        <div class="reach">${reachButtons(p) || '<span class="verified">No contact details on this card.</span>'}</div>
+        <div class="statuses" role="group" aria-label="Status">${S.statuses.map(s => `<button data-set-status="${esc(s)}" aria-pressed="${p.status === s}" style="${p.status === s ? `background:${color(s)}` : ""}">${esc(s)}</button>`).join("")}</div>
+        <div class="tags">
+          <button class="btn ghost" data-star=1 aria-pressed="${p.starred}" style="color:${p.starred ? "var(--star)" : "var(--muted)"};padding:3px 6px">${p.starred ? "★ Starred" : "☆ Star"}</button>
+          ${p.tags.map(t => `<span class="tag">${esc(t)}<button data-untag="${esc(t)}" aria-label="Remove tag ${esc(t)}">×</button></span>`).join("")}
+          <input class="tag-input" id="tagin" placeholder="Add tag" list="alltags" aria-label="Add tag">
+          <datalist id="alltags">${[...new Set(S.people.flatMap(q => q.tags))].map(t => `<option value="${esc(t)}">`).join("")}</datalist>
+        </div>
+      </div>
+    </div>
+    <section class="block"><h2>Notes</h2>
+      <form class="note-form" id="noteform"><textarea id="notetext" placeholder="What did you talk about? What's next?" aria-label="New note"></textarea>
+      <button class="btn primary" type="submit">Add note</button></form>
+      ${p.notes.map(n => `<div class="note"><div class="when"><span>${esc(n.at)}</span><button data-delnote="${n.id}">Delete</button></div>${esc(n.text)}</div>`).join("")}
+    </section>
+    <section class="block"><h2>Details<button class="btn" data-edit=1>${S.editing ? "Cancel" : "Edit"}</button>${S.editing ? '<button class="btn primary" data-save=1>Save changes</button>' : ""}</h2>
+      <dl class="fields">${F.map(([k, l, v]) => S.editing ? `<dt><label for="f-${k}">${l}</label></dt><dd><input id="f-${k}" data-field="${k}" value="${esc(v || "")}"></dd>`
+        : (v ? `<dt>${l}</dt><dd>${esc(v)}</dd>` : "")).join("")}
+        ${!S.editing && p.other ? `<dt>On the card</dt><dd>${esc(p.other)}</dd>` : ""}
+        ${!S.editing && tgNotes ? `<dt>Checked</dt><dd class="verified">${esc(tgNotes)}</dd>` : ""}
+        ${!S.editing ? qrRow(p) : ""}
+        ${!S.editing ? `<dt>Photographed</dt><dd class="verified">${esc(p.source || "")}</dd>` : ""}
+      </dl>
+    </section>
+    ${p.company_key ? companyBlock(p.company_key, p.id) : ""}
+  </div>`;
+}
+
+function renderCompany(key) {
+  const c = companiesList().find(x => x.key === key) || {key, ps: S.people.filter(p => p.company_key === key), co: S.companies[key] || {name: key}};
+  const ppl = c.ps.filter(p => !p.bare);
+  return `<div class="detail-inner"><button class="btn back" data-back=1>Back to list</button>
+    <div class="who"><h1>${esc(c.co.name || key)}</h1><div class="role">${esc(c.co.industry || "")}${c.co.hq ? `, ${esc(c.co.hq)}` : ""}</div></div>
+    ${companyBlock(key, -1).replace(/<h2>.*?<\/h2>/, "")}
+    <section class="block"><h2>People</h2><div class="mates">${ppl.map(m => `<button class="mate" data-goto="${m.id}">${esc(m.display)}${m.title ? `, ${esc(m.title)}` : ""}</button>`).join("") || '<span class="verified">Only a card back from this company.</span>'}</div></section>
+  </div>`;
+}
+
+function renderDetail() {
+  const d = $("#detail");
+  if (S.view === "people") {
+    const p = S.people.find(x => x.id === S.sel);
+    d.innerHTML = p ? renderPerson(p) : `<div class="placeholder"><h2>Pick someone from the list</h2>Press <kbd>/</kbd> to search, <kbd>↑</kbd> <kbd>↓</kbd> to move through people.</div>`;
+  } else {
+    d.innerHTML = S.sel ? renderCompany(S.sel) : `<div class="placeholder"><h2>Pick a company</h2>Everyone you met there, with what the company does.</div>`;
+  }
+}
+
+function render() {
+  $("#v-people").setAttribute("aria-pressed", S.view === "people");
+  $("#v-companies").setAttribute("aria-pressed", S.view === "companies");
+  $("#sort").style.visibility = S.view === "people" ? "visible" : "hidden";
+  renderFacets(); renderList(); renderDetail();
+}
+
+function select(id) {
+  S.sel = id; S.editing = false; S.photo = 0;
+  history.replaceState(null, "", S.view === "people" ? `#p${id}` : `#c${encodeURIComponent(id)}`);
+  document.body.classList.add("show-detail");
+  renderList(); renderDetail();
+  document.querySelector(`.row[aria-selected="true"]`)?.scrollIntoView({block: "nearest"});
+}
+
+let toastT;
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 1600); }
+
+async function api(url, method, body) {
+  const r = await fetch(url, {method, headers: {"Content-Type": "application/json"}, body: body && JSON.stringify(body)});
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "Could not save. Is crm.py still running?");
+  return j;
+}
+
+async function save(p, patch, msg) {
+  try { await api(`/api/contact/${p.id}`, "POST", patch); toast(msg); }
+  catch (e) { toast(e.message); }
+}
+
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-id],[data-co],[data-status],[data-tag],[data-industry],[data-has],[data-reset],[data-starred],[data-set-status],[data-star],[data-untag],[data-delnote],[data-edit],[data-save],[data-goto],[data-co-link],[data-photo],[data-zoom],[data-back]");
+  if (!t) return;
+  const p = S.people.find(x => x.id === S.sel);
+  const ds = t.dataset;
+  if (ds.id) return select(+ds.id);
+  if (ds.co) return select(ds.co);
+  if (ds.reset) { S.status = S.tag = S.has = S.industry = null; S.starred = false; return render(); }
+  if (ds.starred) { S.starred = !S.starred; return render(); }
+  if (ds.status !== undefined && t.classList.contains("facet")) { S.status = S.status === ds.status ? null : ds.status; return render(); }
+  if (ds.tag !== undefined && t.classList.contains("facet")) { S.tag = S.tag === ds.tag ? null : ds.tag; return render(); }
+  if (ds.industry !== undefined) { S.industry = S.industry === ds.industry ? null : ds.industry; return render(); }
+  if (ds.has) { S.has = S.has === ds.has ? null : ds.has; return render(); }
+  if (ds.setStatus && p) { p.status = ds.setStatus; render(); return save(p, {status: p.status}, `Status set to ${p.status}`); }
+  if (ds.star && p) { p.starred = !p.starred; render(); return save(p, {starred: p.starred}, p.starred ? "Starred" : "Star removed"); }
+  if (ds.untag && p) { p.tags = p.tags.filter(x => x !== ds.untag); render(); return save(p, {tags: p.tags}, "Tag removed"); }
+  if (ds.delnote && p) {
+    if (!confirm("Delete this note?")) return;
+    await api(`/api/notes/${ds.delnote}`, "DELETE"); p.notes = p.notes.filter(n => n.id !== +ds.delnote); renderDetail(); return toast("Note deleted");
+  }
+  if (ds.edit) { S.editing = !S.editing; return renderDetail(); }
+  if (ds.save && p) {
+    const f = {}; document.querySelectorAll("[data-field]").forEach(i => f[i.dataset.field] = i.value.trim());
+    const list = v => v.split(/[,;]\s*/).map(x => x.trim()).filter(Boolean);
+    const fields = {full_name: f.full_name || null, job_title: f.job_title || null, company: f.company || null, emails: list(f.emails),
+      phones: list(f.phones), telegram: list(f.telegram).map(x => x.startsWith("@") ? x : "@" + x), website: f.website || null,
+      linkedin: f.linkedin || null, address: f.address || null, city: f.city || null, country: f.country || null};
+    try {
+      await api(`/api/contact/${p.id}`, "POST", {fields});
+      Object.assign(p, {name: fields.full_name, title: fields.job_title, company: fields.company, emails: fields.emails, phones: fields.phones,
+        telegram: fields.telegram, website: fields.website, linkedin: fields.linkedin, address: fields.address, city: fields.city, country: fields.country, review: false});
+      p.display = p.name || p.company || p.emails[0] || "Unnamed card";
+      S.editing = false; render(); toast("Changes saved");
+    } catch (err) { toast(err.message); }
+    return;
+  }
+  if (ds.goto) { S.view = "people"; S.q = ""; $("#q").value = ""; S.status = S.tag = S.has = S.industry = null; S.starred = false; render(); return select(+ds.goto); }
+  if (ds.coLink) { e.preventDefault(); S.view = "companies"; S.q = ""; $("#q").value = ""; S.industry = null; render(); return select(ds.coLink); }
+  if (ds.photo !== undefined) { S.photo = +ds.photo; return renderDetail(); }
+  if (ds.zoom) { $("#zoom img").src = ds.zoom; return $("#zoom").classList.add("show"); }
+  if (ds.back) { document.body.classList.remove("show-detail"); }
+});
+
+document.addEventListener("submit", async e => {
+  if (e.target.id !== "noteform") return;
+  e.preventDefault();
+  const p = S.people.find(x => x.id === S.sel), text = $("#notetext").value.trim();
+  if (!p || !text) return toast("Write something first");
+  try { const n = await api(`/api/contact/${p.id}/notes`, "POST", {text}); p.notes.unshift(n); p.updated = n.at; renderDetail(); toast("Note added"); }
+  catch (err) { toast(err.message); }
+});
+
+document.addEventListener("keydown", e => {
+  if (e.target.id === "tagin" && e.key === "Enter") {
+    const p = S.people.find(x => x.id === S.sel), v = e.target.value.trim();
+    if (p && v && !p.tags.includes(v)) { p.tags.push(v); p.tags.sort(); render(); save(p, {tags: p.tags}, `Tagged ${v}`); setTimeout(() => $("#tagin")?.focus(), 0); }
+    return;
+  }
+  if (e.key === "Escape") { $("#zoom").classList.remove("show"); if (document.activeElement === $("#q")) { $("#q").value = ""; S.q = ""; renderList(); } return; }
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  if (e.key === "/") { e.preventDefault(); $("#q").focus(); return; }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const ids = [...document.querySelectorAll(".row")].map(r => r.dataset.id ? +r.dataset.id : r.dataset.co);
+    if (!ids.length) return;
+    const i = ids.indexOf(S.sel);
+    select(ids[Math.max(0, Math.min(ids.length - 1, i < 0 ? 0 : i + (e.key === "ArrowDown" ? 1 : -1)))]);
+  }
+});
+
+$("#zoom").addEventListener("click", () => $("#zoom").classList.remove("show"));
+$("#filters-toggle").addEventListener("click", e => {
+  const open = document.body.classList.toggle("filters-open");
+  e.currentTarget.setAttribute("aria-expanded", open);
+});
+let qT;
+$("#q").addEventListener("input", e => { clearTimeout(qT); qT = setTimeout(() => { S.q = e.target.value; renderList(); }, 80); });
+$("#sort").addEventListener("change", e => { S.sort = e.target.value; renderList(); });
+$("#v-people").addEventListener("click", () => { S.view = "people"; S.sel = null; render(); });
+$("#v-companies").addEventListener("click", () => { S.view = "companies"; S.sel = null; render(); });
+$("#export").addEventListener("click", () => {
+  const cols = ["Name", "Title", "Company", "Sector", "Email", "Phone", "Telegram", "Website", "LinkedIn", "QR link", "Status", "Starred", "Tags", "Latest note"];
+  const rows = sorted(filtered()).map(p => [p.display, p.title, p.coName, p.industry, p.emails.join("; "), p.phones.join("; "), p.telegram.join("; "),
+    p.website, p.linkedin, p.qr.filter(q => q.url).map(q => q.url).join("; "), p.status, p.starred ? "yes" : "", p.tags.join("; "), p.notes[0]?.text || ""]);
+  const csv = "﻿" + [cols, ...rows].map(r => r.map(v => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const a = Object.assign(document.createElement("a"), {href: URL.createObjectURL(new Blob([csv], {type: "text/csv"})), download: "contacts.csv"});
+  a.click(); toast(`Exported ${rows.length} people`);
+});
+
+load().catch(() => { $("#detail").innerHTML = `<div class="placeholder"><h2>Can't reach the contacts server</h2>Start it in WSL with <kbd>.venv/bin/python crm.py</kbd>, then reload.</div>`; });
+</script>
+</body>
+</html>

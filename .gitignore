@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+photos/
+cards/
+debug/
+export/
+cards.db
+.run.lock
+archive/
+review/
