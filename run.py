@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Business-card pipeline: ./photos -> crop -> QR + GLM extract -> cards.db -> group by company -> web enrich -> ./export.
 Usage: python run.py"""
-import base64, csv, html, json, os, re, sqlite3, sys, time, urllib.request
+import base64, csv, html, json, os, re, shutil, sqlite3, subprocess, sys, tempfile, time, urllib.error, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -19,6 +19,14 @@ MODEL = os.environ.get("BC_VISION_MODEL", "glm-5.3-flash")  # ponytail: glm-5.3-
 TEXT_MODEL = os.environ.get("BC_TEXT_MODEL", "glm-5.3")  # reads QR pages and web results
 SEARCH_MCP = os.environ.get("BC_SEARCH_MCP", "https://api.z.ai/api/mcp/web_search_prime/mcp")  # set to "" to skip company enrichment
 EXTRA = {"thinking": {"type": "disabled"}} if "z.ai" in ZAI_URL else {}  # GLM reasons by default and can spend all tokens on it
+# Fallback model, used where the main one fails on real cards: its content filter refuses a card (Z.AI blocked gambling
+# cards), or the card is in a right-to-left script (glm-5.3-flash reversed Hebrew names). A second OpenAI-compatible
+# endpoint if configured, otherwise the Claude Code CLI if it is installed and logged in. BC_FALLBACK=off disables it.
+FALLBACK_URL = os.environ.get("BC_FALLBACK_CHAT_URL", "")
+FALLBACK_KEY = os.environ.get("BC_FALLBACK_API_KEY", "")
+FALLBACK_MODEL = os.environ.get("BC_FALLBACK_MODEL", "claude-sonnet-5-5")
+CLAUDE_CLI = None if os.environ.get("BC_FALLBACK") == "off" else shutil.which("claude")
+RTL = re.compile(r"[֐-ࣿ]")  # Hebrew, Arabic, Syriac, Thaana...
 WORKERS = 4
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".heic", ".heif"}
 FREEMAIL = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "live.com", "yahoo.com", "icloud.com", "me.com",
@@ -224,6 +232,40 @@ ORIENT_PROMPT = ("The same business card is shown 4 times, rotated differently, 
                  'Return ONLY JSON {"tile": n}')
 
 
+def has_fallback():
+    return os.environ.get("BC_FALLBACK") != "off" and bool(FALLBACK_URL or CLAUDE_CLI)
+
+
+def fallback_vision(prompt, jpg, schema):
+    """Ask the fallback model about one image; returns the parsed JSON object. Raises if no fallback is available."""
+    if os.environ.get("BC_FALLBACK") == "off":
+        raise RuntimeError("fallback disabled (BC_FALLBACK=off)")
+    if FALLBACK_URL:
+        body = {"model": FALLBACK_MODEL, "max_tokens": 4000, "temperature": 0, "response_format": {"type": "json_object"},
+                "messages": [{"role": "user", "content": [
+                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()}},
+                    {"type": "text", "text": prompt + "\nReturn ONLY a JSON object matching this JSON Schema:\n" + json.dumps(schema)}]}]}
+        req = urllib.request.Request(FALLBACK_URL, json.dumps(body).encode(),
+                                     {"Content-Type": "application/json", "Authorization": "Bearer " + FALLBACK_KEY})
+        return json.loads(json.load(urllib.request.urlopen(req, timeout=180))["choices"][0]["message"]["content"])
+    if CLAUDE_CLI:
+        with tempfile.NamedTemporaryFile(suffix=".jpg", dir=ROOT, delete=False) as f:
+            f.write(jpg)
+        try:
+            out = subprocess.run([CLAUDE_CLI, "-p", f"{prompt}\n\nThe image is the file {f.name}: open it with the Read tool.",
+                                  "--model", FALLBACK_MODEL, "--tools", "Read", "--allowedTools", "Read", "--setting-sources", "",
+                                  "--no-session-persistence", "--output-format", "json", "--json-schema", json.dumps(schema),
+                                  "--system-prompt", "You read business card images precisely. Read the image with the Read tool, then answer."],
+                                 capture_output=True, text=True, timeout=300, cwd=ROOT)
+            res = json.loads(out.stdout)
+            if res.get("is_error") or not res.get("structured_output"):
+                raise RuntimeError(f"claude CLI: {(res.get('result') or out.stderr)[:200]}")
+            return res["structured_output"]
+        finally:
+            os.unlink(f.name)
+    raise RuntimeError("no fallback model: set BC_FALLBACK_CHAT_URL or install the claude CLI")
+
+
 def ask_upright(img, order):
     """One vote: a 2x2 grid of the rotations in `order`, the model names the upright tile. Returns degrees or None."""
     tiles = []
@@ -237,12 +279,17 @@ def ask_upright(img, order):
         cv2.putText(c, str(n), (12, 42), cv2.FONT_HERSHEY_SIMPLEX, 1.4, (0, 0, 220), 4)
         tiles.append(c)
     grid = np.vstack([np.hstack(tiles[:2]), np.hstack(tiles[2:])])
-    b64 = base64.b64encode(cv2.imencode(".jpg", grid, [cv2.IMWRITE_JPEG_QUALITY, 85])[1]).decode()
+    jpg = cv2.imencode(".jpg", grid, [cv2.IMWRITE_JPEG_QUALITY, 85])[1].tobytes()
     body = {"model": MODEL, "max_tokens": 50, "temperature": 0, **EXTRA, "response_format": {"type": "json_object"},
-            "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+            "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpg).decode()}},
                                                       {"type": "text", "text": ORIENT_PROMPT}]}]}
     req = urllib.request.Request(ZAI_URL, json.dumps(body).encode(), {"Content-Type": "application/json", "Authorization": "Bearer " + ZAI_KEY})
-    content = json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]
+    try:
+        content = json.load(urllib.request.urlopen(req, timeout=120))["choices"][0]["message"]["content"]
+    except Exception as e:  # noqa: BLE001
+        if not (refused(e) and has_fallback()):
+            raise
+        content = json.dumps(fallback_vision(ORIENT_PROMPT, jpg, {"type": "object", "properties": {"tile": {"type": "integer"}}, "required": ["tile"]}))
     try:
         tile = int(json.loads(content).get("tile") or 0)
     except (ValueError, TypeError, AttributeError):  # empty or non-JSON reply: cards with no text (logo/QR backs) get this
@@ -266,6 +313,8 @@ def upright(path):
 
 def refused(e):
     """The provider's content filter rejected the image (Z.AI code 1301: gambling/adult cards trip it). Retrying never helps."""
+    if hasattr(e, "refusal"):  # decided already: the error body can only be read once
+        return e.refusal
     if isinstance(e, urllib.error.HTTPError) and e.code == 400:
         try:
             body = e.read().decode("utf-8", "replace")
@@ -314,14 +363,30 @@ def extract(path, qr_text):
     for attempt in range(3):
         try:
             res = json.load(urllib.request.urlopen(req, timeout=180))
-            return coerce(json.loads(res["choices"][0]["message"]["content"]))
+            d = coerce(json.loads(res["choices"][0]["message"]["content"]))
+            rtl = (d["language"] or "").lower()[:2] in ("he", "ar", "fa", "ur", "yi") or RTL.search(
+                " ".join(filter(None, (d["full_name"], d["job_title"], d["company"]))))
+            if rtl and has_fallback():  # glm-5.3-flash reversed Hebrew names on real cards; the fallback reads RTL correctly
+                try:
+                    print(f"  {path}: right-to-left card, re-reading with {FALLBACK_MODEL}")
+                    return coerce(fallback_vision(prompt.replace("(attached)", "(in the file below)"), (ROOT / path).read_bytes(), SCHEMA))
+                except Exception as e:  # noqa: BLE001 - keep the main model's read, flagged
+                    d["uncertain_fields"] = sorted(set(d["uncertain_fields"]) | {"full_name (right-to-left script)"})
+            return d
         except Exception as e:  # noqa: BLE001 - any failure is retried, then left for the next run
             err = e
             if refused(e):
                 break  # the content filter will refuse it every time
             time.sleep(5 * 2 ** attempt)
-    if refused(err):  # keep the card, ask a human: an empty row flagged for review instead of retrying forever
-        return coerce({"other_text": "The model provider refused to read this card (content filter). Fill it in from the photo.",
+    if refused(err):
+        if has_fallback():  # another model reads it instead
+            try:
+                print(f"  {path}: main model refused this card (content filter), reading it with {FALLBACK_MODEL}")
+                return coerce(fallback_vision(prompt.replace("(attached)", "(in the file below)"), (ROOT / path).read_bytes(), SCHEMA))
+            except Exception as e:  # noqa: BLE001
+                print(f"  ! fallback failed for {path}: {e}")
+        # no model would read it: keep the card, ask a human, never retry forever
+        return coerce({"other_text": "No model would read this card (content filter). Fill it in from the photo.",
                        "confidence": 0, "uncertain_fields": ["all fields (provider refused the image)"]})
     raise RuntimeError(f"{path}: {err}")
 

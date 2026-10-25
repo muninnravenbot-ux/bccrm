@@ -134,6 +134,16 @@ Then run `systemctl --user enable --now bccrm`.
 | `BC_VISION_MODEL` | `glm-5.3-flash` | reads the card images |
 | `BC_TEXT_MODEL` | `glm-5.3` | reads QR pages and web results |
 | `BC_SEARCH_MCP` | Z.AI `web_search_prime` MCP | web search for company profiles; set it to empty to skip |
+| `BC_FALLBACK_CHAT_URL`, `BC_FALLBACK_API_KEY` | none | a second OpenAI-compatible endpoint for the fallback model |
+| `BC_FALLBACK_MODEL` | `claude-sonnet-5-5` | the fallback model |
+| `BC_FALLBACK` | on | set to `off` to never use a fallback |
+| `BC_PORT` | `8770` | port of the contact book |
+
+**The fallback model** takes over where the main model fails on real cards: when its content filter refuses a card
+(Z.AI refused some gambling-industry cards), and for right-to-left scripts (`glm-5.3-flash` reversed Hebrew names).
+If `BC_FALLBACK_CHAT_URL` is set it uses that endpoint; otherwise it uses the
+[Claude Code](https://claude.com/claude-code) CLI when it's installed and logged in (`claude -p`, with the image read
+by its Read tool). With no fallback available, a refused card is kept and flagged for you to fill in.
 
 **Z.AI Coding Plan:** keep the `/api/coding/` endpoint. The general `/api/paas/v4/` endpoint bills your API balance
 instead of the plan. For another provider, point `BC_CHAT_URL` at its OpenAI-compatible endpoint and choose a vision
@@ -179,7 +189,8 @@ Every item below happened on a real stack of ~500 cards and is now handled in th
 | Logo-only backs | linked to the front with the same company |
 | Name-only company searched on the web ("MLB" → baseball) | only companies with a domain are looked up |
 | Link-in-bio hosts (linktr.ee, mssg.me) mistaken for the company | never used as a company key |
-| Model provider refuses a card (content filter) | the card is kept and flagged for a person, never retried forever |
+| Model provider refuses a card (content filter) | the fallback model reads and orients it; with no fallback the card is kept and flagged |
+| Right-to-left cards (Hebrew, Arabic) read reversed | re-read with the fallback model |
 | Cards with no text (logo or QR backs) stall orientation | an empty answer is "no vote"; the card is left as photographed |
 | Dark mode: native menus white on white, dim grey text | themed controls everywhere; text meets WCAG contrast (4.5:1) in both themes |
 | Two runs at once, e.g. two chat messages | a lock serialises them (Linux, macOS, Windows) |
